@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -26,6 +26,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     Admin uchun xodim yaratish, ko‘rish, tahrirlash.
     """
     permission_classes = [IsAuthenticated]
+
 
     def get_queryset(self):
         queryset = (
@@ -75,6 +76,7 @@ class LoginAPIView(APIView):
     """
     permission_classes = []
 
+    @swagger_auto_schema(request_body=LoginSerializer, responses={200: LoginSerializer})
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -99,6 +101,7 @@ class SetPinAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(request_body=PinSetSerializer, responses={200: PinSetSerializer})
     def post(self, request):
         serializer = PinSetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -127,7 +130,7 @@ class PinLoginAPIView(APIView):
     natijada token qaytadi
     """
     permission_classes = []
-
+    @swagger_auto_schema(request_body=PinLoginSerializer, responses={200: PinLoginSerializer})
     def post(self, request):
         serializer = PinLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -149,7 +152,7 @@ class MeAPIView(APIView):
     Token orqali hozirgi login bo‘lgan xodimni qaytaradi.
     """
     permission_classes = [IsAuthenticated]
-
+    # @swagger_auto_schema(request_body=MeSerializer, responses={200: MeSerializer})
     def get(self, request):
         try:
             employee = request.user.employee
