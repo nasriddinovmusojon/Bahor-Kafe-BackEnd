@@ -7,8 +7,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 
-from .models import Order, OrderItem
-from .serializers import OrderSerializer, OrderItemSerializer
+from .models import Order, OrderItem, Payment
+from .serializers import OrderSerializer, OrderItemSerializer, PaymentSerializer
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -94,6 +94,37 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
+    @action(detail=False, methods=["get"], url_path="table")
+    def table_search(self, request):
+        """
+        Stol raqami / stol nomi bo‘yicha order qidirish.
+
+        Endpoint:
+            GET /api/orders/table/?q=1
+
+        Bu yerda q = table.name bo‘yicha qidiradi.
+        Agar sizda stol raqami fieldi boshqa nomda bo‘lsa, shu joyni moslaysiz.
+        """
+        q = request.query_params.get("q", "").strip()
+
+        if not q:
+            return Response(
+                {"detail": "Qidiruv uchun q param yuboring. Masalan: /api/orders/table/?q=1"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        queryset = (
+            Order.objects
+            .select_related("table", "assigned_waiter")
+            .prefetch_related("items")
+            .filter(table__name__icontains=q)
+            .exclude(status__in=[Order.Status.CLOSED, Order.Status.CANCELLED])
+            .order_by("-created_at")
+        )
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     # POST /api/orders/5/send_to_kitchen/
     @action(detail=True, methods=["post"])
     def send_to_kitchen(self, request, pk=None):
@@ -163,8 +194,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.status = Order.Status.READY
         order.save()
 
-        # Istasangiz shu yerda itemlarni ham READY qilishingiz mumkin
-        order.items.exclude(status=OrderItem.Status.CANCELLED).update(status=OrderItem.Status.READY)
+
 
         return Response(
             OrderSerializer(order, context={"request": request}).data,
@@ -264,8 +294,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.status = Order.Status.CANCELLED
         order.save()
 
-        order.items.update(status=OrderItem.Status.CANCELLED)
-
         return Response(
             OrderSerializer(order, context={"request": request}).data,
             status=status.HTTP_200_OK
@@ -350,14 +378,20 @@ class OrderItemViewSet(viewsets.ModelViewSet):
     """
     OrderItemViewSet
     ----------------
-    Order itemlar bilan ishlash uchun.
+    Buyurtma ichidagi mahsulotlar bilan ishlash uchun.
 
-    Odatda productionda itemlar ko'proq Order ichida boshqariladi.
-    Lekin alohida endpoint ham foydali bo'lishi mumkin.
+    OrderItem endi status saqlamaydi.
+    Status faqat Order va KitchenTicket da yuradi.
+
+    Bu ViewSet quyidagi ishlarni bajaradi:
+    - item yaratish
+    - item ro'yxatini ko'rish
+    - itemni tahrirlash
+    - itemni o'chirish
 
     Query params:
-    - ?order=
-    - ?status=
+    - ?order=      -> ma'lum bir order itemlarini olish
+    - ?product=    -> ma'lum bir product bo'yicha filter
     """
 
     serializer_class = OrderItemSerializer
@@ -372,103 +406,97 @@ class OrderItemViewSet(viewsets.ModelViewSet):
         )
 
         order_param = self.request.query_params.get("order")
-        status_param = self.request.query_params.get("status")
+        product_param = self.request.query_params.get("product")
 
         if order_param:
             queryset = queryset.filter(order_id=order_param)
 
-        if status_param:
-            queryset = queryset.filter(status=status_param)
+        if product_param:
+            queryset = queryset.filter(product_id=product_param)
 
         return queryset
+
+    def _validate_order_editable(self, order):
+        """
+        Buyurtma item qo‘shish/o‘zgartirish/o‘chirish mumkin bo‘lgan holatdami — tekshiradi.
+        """
+        if order.status in [Order.Status.PAID, Order.Status.CLOSED]:
+            raise ValidationError("To‘langan yoki yopilgan buyurtmani o‘zgartirib bo‘lmaydi.")
+
+        if order.status == Order.Status.CANCELLED:
+            raise ValidationError("Bekor qilingan buyurtmani o‘zgartirib bo‘lmaydi.")
 
     @transaction.atomic
     def perform_create(self, serializer):
         """
-        Item yaratishda transaction ishlatamiz.
-
-        Nega:
-        - item save bo'ladi
-        - line_total hisoblanadi
-        - order total qayta hisoblanadi
-
-        Hammasi bitta transaction ichida bo'lsa xavfsizroq.
+        Item yaratish:
+        - line_total model ichida hisoblanadi
+        - order.total_amount model ichida qayta hisoblanadi
         """
+        order = serializer.validated_data.get("order")
+        self._validate_order_editable(order)
         serializer.save()
 
     @transaction.atomic
     def perform_update(self, serializer):
         """
-        Item update bo'lganda ham transaction.
+        Item tahrirlash:
+        - qty, unit_price, note o'zgarishi mumkin
+        - line_total qayta hisoblanadi
+        - order.total_amount qayta hisoblanadi
         """
+        order = serializer.instance.order
+        self._validate_order_editable(order)
         serializer.save()
 
     @transaction.atomic
     def perform_destroy(self, instance):
         """
-        Item o'chirilganda ham transaction.
+        Item o‘chirish:
+        - item o'chiriladi
+        - order.total_amount qayta hisoblanadi
         """
+        order = instance.order
+        self._validate_order_editable(order)
         instance.delete()
 
-    @action(detail=True, methods=["post"])
-    def mark_cooking(self, request, pk=None):
-        """
-        Item holatini COOKING qilish.
-        """
-        item = self.get_object()
 
-        if item.status == OrderItem.Status.CANCELLED:
-            return Response(
-                {"detail": "Bekor qilingan itemni cooking qilib bo‘lmaydi."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+class PaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
 
-        item.status = OrderItem.Status.COOKING
-        item.save()
-
-        return Response(
-            OrderItemSerializer(item, context={"request": request}).data,
-            status=status.HTTP_200_OK
+    def get_queryset(self):
+        queryset = (
+            Payment.objects
+            .select_related("order")
+            .all()
+            .order_by("-created_at")
         )
 
-    @action(detail=True, methods=["post"])
-    def mark_ready(self, request, pk=None):
-        """
-        Item holatini READY qilish.
-        """
-        item = self.get_object()
+        order_param = self.request.query_params.get("order")
+        payment_type = self.request.query_params.get("payment_type")
 
-        if item.status == OrderItem.Status.CANCELLED:
-            return Response(
-                {"detail": "Bekor qilingan itemni ready qilib bo‘lmaydi."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if order_param:
+            queryset = queryset.filter(order_id=order_param)
 
-        item.status = OrderItem.Status.READY
-        item.save()
+        if payment_type:
+            queryset = queryset.filter(payment_type=payment_type)
+
+        return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError("To‘lovni o‘chirib bo‘lmaydi.")
+
+    @action(detail=False, methods=["post"], url_path="pay")
+    def pay(self, request):
+        """
+        Frontend modal uchun asosiy endpoint.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
 
         return Response(
-            OrderItemSerializer(item, context={"request": request}).data,
-            status=status.HTTP_200_OK
-        )
-
-    @action(detail=True, methods=["post"])
-    def cancel(self, request, pk=None):
-        """
-        Itemni bekor qilish.
-        """
-        item = self.get_object()
-
-        if item.order.status in [Order.Status.PAID, Order.Status.CLOSED]:
-            return Response(
-                {"detail": "To‘langan yoki yopilgan buyurtmadagi itemni bekor qilib bo‘lmaydi."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        item.status = OrderItem.Status.CANCELLED
-        item.save()
-
-        return Response(
-            OrderItemSerializer(item, context={"request": request}).data,
-            status=status.HTTP_200_OK
+            self.get_serializer(payment).data,
+            status=status.HTTP_201_CREATED
         )

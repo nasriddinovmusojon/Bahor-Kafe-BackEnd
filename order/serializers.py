@@ -14,7 +14,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "unit_price",
             "qty",
             "line_total",
-            "status",
             "note",
             "created_at",
             "updated_at",
@@ -95,5 +94,59 @@ class OrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "assigned_waiter": "Mas'ul xodimning roli WAITER bo‘lishi kerak."
             })
+
+        return attrs
+
+from rest_framework import serializers
+from .models import Payment
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    order_number = serializers.CharField(source="order.number", read_only=True)
+    order_total = serializers.DecimalField(source="order.total_amount", max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            "id",
+            "order",
+            "order_number",
+            "order_total",
+            "payment_type",
+            "cash_amount",
+            "card_amount",
+            "paid_amount",
+            "note",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "paid_amount",
+            "created_at",
+            "updated_at",
+            "order_number",
+            "order_total",
+        ]
+
+    def validate(self, attrs):
+        order = attrs.get("order")
+        payment_type = attrs.get("payment_type")
+        cash_amount = attrs.get("cash_amount", 0)
+        card_amount = attrs.get("card_amount", 0)
+
+        if hasattr(order, "payment"):
+            raise serializers.ValidationError({"order": "Bu order uchun to‘lov allaqachon qilingan."})
+
+        if order.status in [order.Status.CLOSED, order.Status.CANCELLED]:
+            raise serializers.ValidationError({"order": "Yopilgan yoki bekor qilingan order uchun to‘lov qilib bo‘lmaydi."})
+
+        if payment_type == Payment.PaymentType.CASH and cash_amount <= 0:
+            raise serializers.ValidationError({"cash_amount": "Naqd summa kiritilishi shart."})
+
+        if payment_type == Payment.PaymentType.CARD and card_amount <= 0:
+            raise serializers.ValidationError({"card_amount": "Karta summa kiritilishi shart."})
+
+        if payment_type == Payment.PaymentType.MIXED and (cash_amount + card_amount) <= 0:
+            raise serializers.ValidationError("Aralash to‘lov uchun summa kiritilishi shart.")
 
         return attrs

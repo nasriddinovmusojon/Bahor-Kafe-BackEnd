@@ -11,7 +11,6 @@ class OrderItemInline(admin.TabularInline):
         "unit_price",
         "qty",
         "line_total",
-        "status",
         "note",
     )
     readonly_fields = ("line_total", "product_name_snapshot")
@@ -96,11 +95,9 @@ class OrderItemAdmin(admin.ModelAdmin):
         "unit_price",
         "qty",
         "line_total",
-        "status",
         "created_at",
     )
     list_filter = (
-        "status",
         "created_at",
     )
     search_fields = (

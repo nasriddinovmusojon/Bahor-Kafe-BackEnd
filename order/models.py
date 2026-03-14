@@ -186,11 +186,13 @@ class Order(models.Model):
             - qayta ishlatish oson bo'ladi
             - save ichida ham, item o'zgarganda ham chaqirish mumkin
         """
+        service_amount = Decimal("1000") * self.guests_count
+
         items_total = self.items.aggregate(
             total=Coalesce(Sum("line_total"), Decimal("0.00"))
         )["total"]
 
-        return items_total + self.service_amount
+        return items_total + service_amount
 
     def recalculate_total(self, save=True):
         """
@@ -204,9 +206,12 @@ class Order(models.Model):
         """
         self.total_amount = self.calculate_total()
 
+        service_amount = Decimal("1000") * self.guests_count
+
         if save and self.pk:
             Order.objects.filter(pk=self.pk).update(
                 total_amount=self.total_amount,
+                service_amount=service_amount,
                 updated_at=timezone.now(),
             )
 
@@ -278,13 +283,6 @@ class OrderItem(models.Model):
     Shu qatorlarning har biri alohida OrderItem bo'ladi.
     """
 
-    class Status(models.TextChoices):
-        NEW = "new", "Yangi"
-        COOKING = "cooking", "Tayyorlanmoqda"
-        READY = "ready", "Tayyor"
-        CANCELLED = "cancelled", "Bekor qilindi"
-
-
     order = models.ForeignKey(
         "order.Order",
         on_delete=models.CASCADE,
@@ -336,13 +334,6 @@ class OrderItem(models.Model):
         help_text="Umumiy summa = unit_price x qty.",
     )
 
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.NEW,
-        help_text="Item holati.",
-    )
-
     note = models.TextField(
         blank=True,
         default="",
@@ -362,7 +353,7 @@ class OrderItem(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["order", "status"]),
+            models.Index(fields=["order"]),
         ]
 
     def __str__(self):
@@ -415,3 +406,111 @@ class OrderItem(models.Model):
 
         if order:
             order.recalculate_total()
+
+
+
+from decimal import Decimal
+
+from django.db import models, transaction
+from django.core.validators import MinValueValidator
+from django.utils import timezone
+
+
+class Payment(models.Model):
+    class PaymentType(models.TextChoices):
+        CASH = "cash", "Naqd"
+        CARD = "card", "Karta"
+        MIXED = "mixed", "Aralash"
+
+    order = models.OneToOneField(
+        "order.Order",
+        on_delete=models.CASCADE,
+        related_name="payment",
+        help_text="Qaysi buyurtma uchun to‘lov qilingan."
+    )
+
+    payment_type = models.CharField(
+        max_length=10,
+        choices=PaymentType.choices,
+        help_text="To‘lov turi."
+    )
+
+    cash_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+        help_text="Naqd to‘langan summa."
+    )
+
+    card_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+        help_text="Karta orqali to‘langan summa."
+    )
+
+    paid_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Jami to‘langan summa."
+    )
+
+    note = models.TextField(
+        blank=True,
+        default="",
+        help_text="Qo‘shimcha izoh."
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["payment_type"]),
+        ]
+
+    def __str__(self):
+        return f"Payment #{self.id} - Order {self.order.number}"
+
+    def clean_amounts(self):
+        total = self.order.total_amount or Decimal("0.00")
+        cash = self.cash_amount or Decimal("0.00")
+        card = self.card_amount or Decimal("0.00")
+
+        if self.payment_type == self.PaymentType.CASH:
+            self.card_amount = Decimal("0.00")
+            self.paid_amount = cash
+
+        elif self.payment_type == self.PaymentType.CARD:
+            self.cash_amount = Decimal("0.00")
+            self.paid_amount = card
+
+        elif self.payment_type == self.PaymentType.MIXED:
+            self.paid_amount = cash + card
+
+    def validate_payment(self):
+        total = self.order.total_amount or Decimal("0.00")
+
+        if self.payment_type == self.PaymentType.CASH and self.cash_amount < total:
+            raise ValueError("Naqd summa jami summadan kam bo‘lishi mumkin emas.")
+
+        if self.payment_type == self.PaymentType.CARD and self.card_amount < total:
+            raise ValueError("Karta summasi jami summadan kam bo‘lishi mumkin emas.")
+
+        if self.payment_type == self.PaymentType.MIXED and (self.cash_amount + self.card_amount) < total:
+            raise ValueError("Aralash to‘lovda jami summa yetarli emas.")
+
+    def save(self, *args, **kwargs):
+        self.clean_amounts()
+        self.validate_payment()
+
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+
+            # Order statusni paid qilish
+            self.order.status = self.order.Status.PAID
+            self.order.save(update_fields=["status", "updated_at"])

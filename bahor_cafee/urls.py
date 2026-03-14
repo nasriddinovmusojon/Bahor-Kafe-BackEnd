@@ -39,7 +39,7 @@ urlpatterns = [
     path('employee/', include('employee.urls')),
     path('kitchen/', include('kitchen.urls')),
     path('order/', include('order.urls')),
-    path('table,', include('table.urls')),
+    path('table/', include('table.urls')),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
 
 ]
