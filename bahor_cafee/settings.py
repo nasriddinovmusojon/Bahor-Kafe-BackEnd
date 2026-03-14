@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'employee',
-    'kitchen',
     'order',
     'table',
     'drf_yasg',
