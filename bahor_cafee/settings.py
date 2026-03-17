@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-k9df*mk5b0$5i1248-b!la7$4xdblvt)gyl3!(o@ttsq9#^3v1
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["bilgex.pythonanywhere.com", "127.0.0.1"]
+ALLOWED_HOSTS = ["bilgex.pythonanywhere.com", "127.0.0.1", ]
 
 
 # Application definition
@@ -70,6 +70,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://adsadadsadsa.netlify.app",
 ]
 
 ROOT_URLCONF = 'bahor_cafee.urls'
@@ -134,6 +135,10 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
+
+PRINTER_IP = "192.168.1.10"
+PRINTER_PORT = 9100
 
 
 # Static files (CSS, JavaScript, Images)

@@ -1,12 +1,10 @@
 from django.db import transaction
-from django.utils import timezone
-
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-
+from .services import print_kitchen_ticket, KitchenPrinterError
 from .models import Order, OrderItem, Payment
 from .serializers import OrderSerializer, OrderItemSerializer, PaymentSerializer
 
@@ -132,9 +130,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         Buyurtmani oshxonaga yuborish.
 
         Qoidalar:
-        - faqat draft yoki cooking bo'lmagan holatda ishlashi kerak
-        - order status = sent_to_kitchen bo'ladi
-        - sent_to_kitchen_at model save ichida avtomatik qo'yiladi
+        - cancelled bo'lsa yuborilmaydi
+        - closed bo'lsa yuborilmaydi
+        - bo'sh order yuborilmaydi
+        - sent_to_kitchen bo'lsa qayta yuborilmaydi
+        - avval bazaga saqlanadi
+        - keyin printerga chiqariladi
+        - printer xatolari foydalanuvchiga tushunarli qaytariladi
         """
         order = self.get_object()
 
@@ -155,21 +157,41 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"detail": "Bo‘sh buyurtmani oshxonaga yuborib bo‘lmaydi."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        try:
+            with transaction.atomic():
+                order.status = Order.Status.SENT_TO_KITCHEN
+                order.save()
 
-        if order.status == Order.Status.SENT_TO_KITCHEN:
+            # transaction muvaffaqiyatli bo'lgandan keyin printerga urinamiz
+            try:
+                print_kitchen_ticket(order)
+            except KitchenPrinterError as e:
+                return Response(
+                    {
+                        "detail": str(e),
+                        "order_id": order.id,
+                        "status": order.status,
+                        "printed": False
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+
             return Response(
-                {"detail": "Buyurtma allaqachon oshxonaga yuborilgan."},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "detail": "Buyurtma oshxonaga yuborildi va printerdan chiqarildi.",
+                    "printed": True,
+                    "order": OrderSerializer(order, context={"request": request}).data,
+                },
+                status=status.HTTP_200_OK
             )
 
-        order.status = Order.Status.SENT_TO_KITCHEN
-        order.save()
-
-        return Response(
-            OrderSerializer(order, context={"request": request}).data,
-            status=status.HTTP_200_OK
-        )
-
+        except Exception as e:
+            return Response(
+                {
+                    "detail": f"Buyurtmani oshxonaga yuborishda kutilmagan xatolik yuz berdi: {e}"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     @action(detail=True, methods=["post"])
     def mark_ready(self, request, pk=None):
         """

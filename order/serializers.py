@@ -1,6 +1,5 @@
 from rest_framework import serializers
-from .models import Order, OrderItem
-
+from .models import Order, OrderItem, Payment
 
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
@@ -90,15 +89,9 @@ class OrderSerializer(serializers.ModelSerializer):
                 "table": "Takeaway yoki delivery buyurtmada stol bo‘lmasligi kerak."
             })
 
-        if assigned_waiter and getattr(assigned_waiter, "role", None) != "WAITER":
-            raise serializers.ValidationError({
-                "assigned_waiter": "Mas'ul xodimning roli WAITER bo‘lishi kerak."
-            })
 
         return attrs
 
-from rest_framework import serializers
-from .models import Payment
 
 
 class PaymentSerializer(serializers.ModelSerializer):

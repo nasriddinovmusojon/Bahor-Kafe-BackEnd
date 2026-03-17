@@ -1,12 +1,11 @@
 from datetime import date
 import random
 from decimal import Decimal
-
-from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.core.validators import MinValueValidator
 
 
 class Order(models.Model):
@@ -408,14 +407,6 @@ class OrderItem(models.Model):
             order.recalculate_total()
 
 
-
-from decimal import Decimal
-
-from django.db import models, transaction
-from django.core.validators import MinValueValidator
-from django.utils import timezone
-
-
 class Payment(models.Model):
     class PaymentType(models.TextChoices):
         CASH = "cash", "Naqd"
@@ -464,6 +455,7 @@ class Payment(models.Model):
         help_text="Qo‘shimcha izoh."
     )
 
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -484,13 +476,16 @@ class Payment(models.Model):
         if self.payment_type == self.PaymentType.CASH:
             self.card_amount = Decimal("0.00")
             self.paid_amount = cash
+            self.change_amount = max(cash - total, Decimal("0.00"))
 
         elif self.payment_type == self.PaymentType.CARD:
             self.cash_amount = Decimal("0.00")
+            self.change_amount = Decimal("0.00")
             self.paid_amount = card
 
         elif self.payment_type == self.PaymentType.MIXED:
             self.paid_amount = cash + card
+            self.change_amount = max((cash + card) - total, Decimal("0.00"))
 
     def validate_payment(self):
         total = self.order.total_amount or Decimal("0.00")
