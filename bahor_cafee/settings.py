@@ -139,6 +139,7 @@ USE_TZ = True
 
 PRINTER_IP = "192.168.1.10"
 PRINTER_PORT = 9100
+PRINTER_TIMEOUT = 10
 
 
 # Static files (CSS, JavaScript, Images)
