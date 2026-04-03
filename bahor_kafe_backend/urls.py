@@ -1,5 +1,5 @@
 """
-URL configuration for bahor_kafe_backend project.
+URL configuration for bahor_cafee project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/5.1/topics/http/urls/
@@ -15,8 +15,33 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from rest_framework import permissions
+# from branch.views import get_token
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Bahor kafe",
+        default_version='v1',
+        description="Bu API hujjatlari Swagger va Redoc orqali ko'rsatiladi",
+        terms_of_service="https://www.example.com/terms/",
+        contact=openapi.Contact(email="support@example.com"),
+        license=openapi.License(name="MIT License"),
+    ),
+    public=True,
+    permission_classes=[permissions.AllowAny],
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('employee/', include('employee.urls')),
+    path('kitchen/', include('kitchen.urls')),
+    path('order/', include('order.urls')),
+    path('table/', include('table.urls')),
+    path('inventory/', include('inventory.urls')),
+    path('sozlamalar/', include('sozlamalar.urls')),
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+
 ]

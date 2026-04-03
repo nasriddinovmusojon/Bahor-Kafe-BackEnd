@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Order, OrderItem
-from inventory.service import process_sale
+
 
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,7 +42,6 @@ class OrderItemWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = ["product", "quantity"]
-
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
@@ -107,7 +106,7 @@ class OrderSerializer(serializers.ModelSerializer):
         return attrs
 
     # 🔥 ENG MUHIM QISM (inventory ulanish)
-    def create(self, validated_data):
+    def create(self, validated_data, process_sale=None):
         items_data = validated_data.pop("items_data", [])
         user = self.context["request"].user
 

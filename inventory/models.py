@@ -17,7 +17,7 @@ class Ingredient(models.Model):
     name = models.CharField(max_length=255)
 
     unit = models.ForeignKey(Unit, on_delete=models.PROTECT)
-    branch = models.ForeignKey('settings.Branch', on_delete=models.CASCADE)
+    branch = models.ForeignKey('sozlamalar.Branch', on_delete=models.CASCADE)
 
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     min_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)

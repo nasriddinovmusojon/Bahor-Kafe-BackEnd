@@ -79,7 +79,7 @@ MIDDLEWARE = [
 
 
 CORS_ALLOW_CREDENTIALS = True
-ROOT_URLCONF = 'bahor_cafee.urls'
+ROOT_URLCONF = 'bahor_kafe_backend.urls'
 
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -87,7 +87,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://bahor_kafe_backend.onrender.com",
 ]
 CSRF_TRUSTED_ORIGINS = [
-    "https://bahor_kafe_backend.onrender.com",
+    "https://bahor_kafe_backend .onrender.com",
 ]
 
 TEMPLATES = [
@@ -106,7 +106,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'bahor_cafee.wsgi.application'
+WSGI_APPLICATION = 'bahor_kafe_backend.wsgi.application'
 
 
 # Database
