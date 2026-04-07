@@ -203,6 +203,5 @@ class EmployeePermissionSerializer(serializers.ModelSerializer):
             "can_payment",
             "can_discount",
             "can_cancel_order",
-            "can_income",
-            "permissions"
+            "can_income"
         ]
